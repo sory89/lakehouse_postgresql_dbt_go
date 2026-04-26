@@ -66,23 +66,6 @@ cd lakehouse_postgresql_dbt_go
 # Linux / macOS
 docker compose up --build
 
-
-### Run the pipeline manually
-
-```bash
-# 1. Wait for the generator to write data (1–2 min)
-docker logs lakehouse-generator
-
-# 2. Bronze → Silver
-docker compose run --rm spark-bronze-silver
-
-# 3. Silver → Gold
-docker compose run --rm spark-silver-gold
-
-# 4. dbt models
-docker compose run --rm dbt
-```
-
 ---
 
 ## Services
@@ -170,7 +153,3 @@ lakehouse/
 ```
 
 ---
-
-## License
-
-MIT
