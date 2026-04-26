@@ -81,7 +81,7 @@ docker compose up --build
 
 ## API endpoints
 
-```
+```text
 GET  /health                          Health check
 GET  /api/v1/summary                  30-day KPIs
 GET  /api/v1/daily-sales?days=30      Daily revenue
