@@ -1,0 +1,141 @@
+services:
+
+  # ── PostgreSQL (metastore + Gold target) ─────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: lakehouse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       lakehouse
+      POSTGRES_USER:     lakehouse
+      POSTGRES_PASSWORD: lakehouse
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lakehouse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── MinIO (S3-compatible object storage) ─────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: lakehouse-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Data Generator (writes to Bronze) ────────────────────────────────────────
+  generator:
+    build: ./ingestion
+    container_name: lakehouse-generator
+    restart: unless-stopped
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ENDPOINT:   "http://minio:9000"
+      MINIO_ACCESS:     minioadmin
+      MINIO_SECRET:     minioadmin
+      BRONZE_BUCKET:    bronze
+      INTERVAL_SECONDS: "60"
+
+  # ── Spark: Bronze → Silver ────────────────────────────────────────────────────
+  spark-bronze-silver:
+    build: ./spark
+    container_name: lakehouse-spark-b2s
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command: >
+      /opt/spark/bin/spark-submit
+      --master local[2]
+      --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
+      /opt/spark-jobs/bronze_to_silver.py
+    environment:
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_ACCESS:   minioadmin
+      MINIO_SECRET:   minioadmin
+      DB_DSN:         "host=postgres port=5432 dbname=lakehouse user=lakehouse password=lakehouse"
+
+  # ── Spark: Silver → Gold ──────────────────────────────────────────────────────
+  spark-silver-gold:
+    build: ./spark
+    container_name: lakehouse-spark-s2g
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    command: >
+      /opt/spark/bin/spark-submit
+      --master local[2]
+      --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
+      /opt/spark-jobs/silver_to_gold.py
+    environment:
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_ACCESS:   minioadmin
+      MINIO_SECRET:   minioadmin
+      DB_DSN:         "host=postgres port=5432 dbname=lakehouse user=lakehouse password=lakehouse"
+
+  # ── dbt ───────────────────────────────────────────────────────────────────────
+  dbt:
+    build: ./dbt_project
+    container_name: lakehouse-dbt
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST:     postgres
+      POSTGRES_USER:     lakehouse
+      POSTGRES_PASSWORD: lakehouse
+      POSTGRES_DB:       lakehouse
+
+  # ── Go API (serves Gold layer) ────────────────────────────────────────────────
+  api:
+    build: ./api
+    container_name: lakehouse-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: "postgres://lakehouse:lakehouse@postgres:5432/lakehouse"
+
+  # ── Streamlit Dashboard ───────────────────────────────────────────────────────
+  streamlit:
+    build: ./streamlit
+    container_name: lakehouse-streamlit
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8501:8501"
+    environment:
+      API_BASE: "http://api:8080"
+
+volumes:
+  pgdata:
+  miniodata:
