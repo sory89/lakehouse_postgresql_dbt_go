@@ -1,195 +1,176 @@
-# 🏔️ Data Lakehouse Platform (Production-grade)
+# Data Lakehouse Platform
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11-blue?logo=python">
-  <img src="https://img.shields.io/badge/Go-1.22-cyan?logo=go">
-  <img src="https://img.shields.io/badge/Apache%20Spark-3.5-orange?logo=apachespark">
-  <img src="https://img.shields.io/badge/dbt-1.7-red?logo=dbt">
-  <img src="https://img.shields.io/badge/MinIO-S3--compatible-purple">
-  <img src="https://img.shields.io/badge/PostgreSQL-16-blue?logo=postgresql">
-  <img src="https://img.shields.io/badge/Streamlit-1.39-red?logo=streamlit">
-  <img src="https://img.shields.io/badge/Docker-Compose-blue?logo=docker">
-</p>
+A production-grade data lakehouse built on open-source components — from raw e-commerce events to analytical dashboards, with full Bronze → Silver → Gold medallion architecture.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
-E-commerce Source Data
-        │
-        ▼
-   🥉 BRONZE LAYER (MinIO s3a://bronze)
-   Raw JSON/CSV files — no transformation
-   ├── orders/year=X/month=X/day=X/*.json
-   ├── customers/snapshot_YYYYMMDD.csv
-   └── products/snapshot_YYYYMMDD.json
-        │
-        ▼ Spark (bronze_to_silver.py)
-        │ • Schema enforcement
-        │ • Deduplication
-        │ • Null filtering
-        │ • Data quality checks
-        │
-   🥈 SILVER LAYER (MinIO s3a://silver)
-   Cleaned Parquet, partitioned
-   ├── orders/     (partitioned by year/month/day)
-   ├── customers/
-   └── products/
-        │
-        ▼ Spark (silver_to_gold.py)
-        │ • Business aggregations
-        │ • Customer segmentation (RFM)
-        │ • Product performance
-        │
-   🥇 GOLD LAYER (MinIO s3a://gold + PostgreSQL)
-   ├── daily_sales         (revenue trends)
-   ├── product_performance (by period)
-   └── customer_segments   (VIP/Premium/At-risk/New)
-        │
-        ▼ dbt (SQL transformations)
-        │ • revenue_trends   (7d rolling avg, MoM growth)
-        │ • top_products     (ranked by revenue)
-        │ • customer_ltv     (RFM scoring)
-        │
-   Go API (8080) → Streamlit Dashboard (8501)
+E-commerce source data
+         │
+         ▼
+  BRONZE LAYER  ·  MinIO  s3a://bronze
+  Raw JSON/CSV, no transformation
+  └── orders/year=X/month=X/day=X/*.json
+  └── customers/snapshot_YYYYMMDD.csv
+  └── products/snapshot_YYYYMMDD.json
+         │
+         │  Spark — bronze_to_silver.py
+         │  Schema enforcement · deduplication
+         │  Null filtering · data quality checks
+         ▼
+  SILVER LAYER  ·  MinIO  s3a://silver
+  Cleaned Parquet, partitioned by date
+  └── orders / customers / products
+         │
+         │  Spark — silver_to_gold.py
+         │  Business aggregations
+         │  Customer segmentation (RFM)
+         │  Product performance
+         ▼
+  GOLD LAYER  ·  MinIO  s3a://gold  +  PostgreSQL
+  └── daily_sales         — revenue trends
+  └── product_performance — by period
+  └── customer_segments   — VIP / Premium / At-risk / New
+         │
+         │  dbt — SQL transformations
+         │  revenue_trends · top_products · customer_ltv
+         ▼
+  Go REST API (port 8080)  →  Streamlit Dashboard (port 8501)
 ```
 
 ---
 
-## ⚙️ Tech Stack
+## Tech stack
 
 | Component | Technology | Role |
-|-----------|------------|------|
-| Language (pipelines) | Python 3.11 | Ingestion, Spark jobs |
-| Language (API) | Go 1.22 | High-performance REST API |
-| Batch processing | Apache Spark 3.5 | Bronze→Silver→Gold |
+|---|---|---|
+| Pipeline language | Python 3.11 | Ingestion, Spark jobs |
+| API language | Go 1.22 | High-performance REST API |
+| Batch processing | Apache Spark 3.5 | Bronze → Silver → Gold |
 | SQL transformations | dbt 1.7 | Gold analytical models |
 | Object storage | MinIO (S3-compatible) | All layer storage |
-| Metastore + Gold | PostgreSQL 16 | Catalog + API backend |
-| Dashboard | Streamlit | Analytics UI |
+| Metastore + Gold DB | PostgreSQL 16 | Catalog + API backend |
+| Dashboard | Streamlit 1.39 | Analytics UI |
+| Infrastructure | Docker Compose | Local orchestration |
 
 ---
 
-## 🚀 Quick Start
+## Quick start
 
 ```bash
-git clone <repo>
-cd lakehouse
+git clone https://github.com/sory89/lakehouse_postgresql_dbt_go.git
+cd lakehouse_postgresql_dbt_go
 
-# Windows
-$env:DOCKER_BUILDKIT=0
+# Linux / macOS
 docker compose up --build
 
-# Linux/macOS
-docker compose up --build
-```
 
 ### Run the pipeline manually
 
 ```bash
-# 1. Wait for generator to write some data (1-2 min)
+# 1. Wait for the generator to write data (1–2 min)
 docker logs lakehouse-generator
 
-# 2. Run Bronze → Silver
+# 2. Bronze → Silver
 docker compose run --rm spark-bronze-silver
 
-# 3. Run Silver → Gold
+# 3. Silver → Gold
 docker compose run --rm spark-silver-gold
 
-# 4. Run dbt models
+# 4. dbt models
 docker compose run --rm dbt
 ```
 
 ---
 
-## 🌐 Services
+## Services
 
-| Service | URL | Description |
-|---------|-----|-------------|
-| Streamlit Dashboard | http://localhost:8501 | Analytics UI |
-| Go API | http://localhost:8080 | Gold layer REST API |
-| MinIO Console | http://localhost:9001 | Object storage UI (minioadmin/minioadmin) |
-| PostgreSQL | localhost:5432 | Metastore (lakehouse/lakehouse) |
+| Service | URL | Credentials |
+|---|---|---|
+| Streamlit dashboard | http://localhost:8501 | — |
+| Go REST API | http://localhost:8080 | — |
+| MinIO console | http://localhost:9001 | minioadmin / minioadmin |
+| PostgreSQL | localhost:5432 | lakehouse / lakehouse |
 
 ---
 
-## 📡 Go API Endpoints
+## API endpoints
 
-```bash
-GET /health                         # Health check
-GET /api/v1/summary                 # 30-day KPIs
-GET /api/v1/daily-sales?days=30     # Daily revenue
-GET /api/v1/revenue-trends          # 7d rolling avg + MoM growth
-GET /api/v1/top-products?limit=10   # Top products by revenue
-GET /api/v1/customer-segments       # Segment distribution
-GET /api/v1/customer/{id}/ltv       # Customer LTV + RFM
-GET /api/v1/pipeline-runs           # Pipeline history
-GET /api/v1/catalog                 # Table catalog
-GET /api/v1/dq-results              # Data quality results
+```
+GET  /health                          Health check
+GET  /api/v1/summary                  30-day KPIs
+GET  /api/v1/daily-sales?days=30      Daily revenue
+GET  /api/v1/revenue-trends           7-day rolling avg + MoM growth
+GET  /api/v1/top-products?limit=10    Top products by revenue
+GET  /api/v1/customer-segments        Segment distribution
+GET  /api/v1/customer/{id}/ltv        Customer LTV + RFM score
+GET  /api/v1/pipeline-runs            Pipeline history
+GET  /api/v1/catalog                  Table catalog
+GET  /api/v1/dq-results               Data quality results
 ```
 
 ---
 
-## 🔍 Data Quality Checks (Silver layer)
+## Data quality checks (Silver layer)
 
-| Table | Check | Description |
-|-------|-------|-------------|
-| orders | `no_null_order_id` | Primary key not null |
-| orders | `positive_amount` | total_amount > 0 |
-| orders | `valid_status` | completed/refunded/cancelled |
-| orders | `valid_quantity` | 1 ≤ quantity ≤ 100 |
-| customers | `valid_email` | Contains @ |
-| customers | `valid_segment` | standard/premium/vip |
-| products | `positive_price` | base_price > 0 |
-| products | `valid_rating` | 0 ≤ rating ≤ 5 |
+| Table | Check | Rule |
+|---|---|---|
+| orders | no_null_order_id | Primary key not null |
+| orders | positive_amount | total_amount > 0 |
+| orders | valid_status | completed / refunded / cancelled |
+| orders | valid_quantity | 1 ≤ quantity ≤ 100 |
+| customers | valid_email | Contains @ |
+| customers | valid_segment | standard / premium / vip |
+| products | positive_price | base_price > 0 |
+| products | valid_rating | 0 ≤ rating ≤ 5 |
 
 ---
 
-## 📊 dbt Models (Gold)
+## dbt models (Gold layer)
 
 | Model | Description |
-|-------|-------------|
-| `revenue_trends` | Daily revenue + 7-day rolling avg + MoM growth % |
-| `top_products` | Products ranked by revenue per period + share % |
-| `customer_ltv` | RFM scoring → champion/loyal/new/at_risk/regular |
+|---|---|
+| `revenue_trends` | Daily revenue + 7-day rolling average + MoM growth % |
+| `top_products` | Products ranked by revenue per period with share % |
+| `customer_ltv` | RFM scoring → champion / loyal / new / at_risk / regular |
 
 ---
 
-## 📁 Project Structure
+## Project structure
 
 ```
 lakehouse/
 ├── ingestion/
-│   ├── generate_data.py    # E-commerce data generator → MinIO bronze
+│   ├── generate_data.py          E-commerce data generator → MinIO bronze
 │   └── Dockerfile
 ├── spark/
 │   ├── jobs/
-│   │   ├── bronze_to_silver.py   # Cleaning + DQ + schema enforcement
-│   │   └── silver_to_gold.py     # Business aggregations + PostgreSQL sync
+│   │   ├── bronze_to_silver.py   Cleaning, DQ checks, schema enforcement
+│   │   └── silver_to_gold.py     Business aggregations + PostgreSQL sync
 │   └── Dockerfile
 ├── dbt_project/
 │   ├── models/gold/
 │   │   ├── revenue_trends.sql
 │   │   ├── top_products.sql
 │   │   ├── customer_ltv.sql
-│   │   └── schema.yml           # dbt tests
+│   │   └── schema.yml            dbt tests
 │   ├── dbt_project.yml
 │   └── profiles.yml
 ├── api/
-│   ├── main.go                  # Go REST API (10 endpoints)
+│   ├── main.go                   Go REST API — 10 endpoints
 │   ├── go.mod
 │   └── Dockerfile
 ├── streamlit/
-│   └── app.py                   # Dark analytics dashboard (4 tabs)
+│   └── app.py                    Analytics dashboard — 4 tabs
 ├── postgres/init/
-│   └── 01_schema.sql            # Metastore + Gold schemas
+│   └── 01_schema.sql             Metastore + Gold schemas
 └── docker-compose.yml
 ```
 
 ---
 
-## 📝 License
+## License
 
 MIT
-# lakehouse_postgresql_dbt_go
